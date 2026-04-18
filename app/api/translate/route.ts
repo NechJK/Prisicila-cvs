@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 
 import { translateDocxFile } from "@/lib/docx/translate-docx";
 
@@ -33,7 +34,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "The DOCX file could not be translated.";
+      error instanceof ZodError
+        ? "Server configuration error: check OPENAI_API_KEY and OPENAI_MODEL in Vercel Environment Variables."
+        : error instanceof Error
+          ? error.message
+          : "The DOCX file could not be translated.";
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

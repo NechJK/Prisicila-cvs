@@ -6,9 +6,10 @@ const envSchema = z.object({
 });
 
 export function getEnv() {
+  const runtimeEnv = process.env;
+
   return envSchema.parse({
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-    OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
+    OPENAI_API_KEY: runtimeEnv["OPENAI_API_KEY"],
+    OPENAI_MODEL: runtimeEnv["OPENAI_MODEL"] ?? "gpt-5.4-mini",
   });
 }
-
