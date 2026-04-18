@@ -4,6 +4,7 @@ import type { ParagraphSegment, ParagraphTextNode } from "@/lib/docx/types";
 
 const PARAGRAPH_REGEX = /<w:p\b[\s\S]*?<\/w:p>/g;
 const TEXT_NODE_REGEX = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+const FULL_TEXT_NODE_REGEX = /^(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)$/;
 
 const XML_ENTITY_MAP: Record<string, string> = {
   "&amp;": "&",
@@ -173,7 +174,14 @@ export function replaceParagraphText(
     const node = textNodes[replacementIndex];
     const nextText = replacements[replacementIndex] ?? node?.decodedText ?? "";
     replacementIndex += 1;
-    return fullMatch.replace(node.innerXml, escapeXmlText(nextText));
+
+    const parts = fullMatch.match(FULL_TEXT_NODE_REGEX);
+
+    if (!parts) {
+      return fullMatch;
+    }
+
+    return `${parts[1]}${escapeXmlText(nextText)}${parts[3]}`;
   });
 }
 
