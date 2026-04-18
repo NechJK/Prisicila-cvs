@@ -298,9 +298,20 @@ export async function translateDocxFile(
     zip.file(path, nextXml);
   }
 
+  for (const [path, entry] of Object.entries(zip.files)) {
+    if (entry.dir) {
+      zip.remove(path);
+    }
+  }
+
   const outputBuffer = await zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",
+    platform: "DOS",
+    streamFiles: false,
+    compressionOptions: {
+      level: 1,
+    },
   });
 
   await JSZip.loadAsync(outputBuffer);
@@ -314,4 +325,3 @@ export async function translateDocxFile(
     },
   };
 }
-
