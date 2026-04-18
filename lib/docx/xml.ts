@@ -27,10 +27,31 @@ export function decodeXmlEntities(value: string) {
 }
 
 export function escapeXmlText(value: string) {
-  return value
+  return sanitizeXmlText(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+export function sanitizeXmlText(value: string) {
+  return Array.from(value)
+    .filter((character) => {
+      const codePoint = character.codePointAt(0);
+
+      if (codePoint === undefined) {
+        return false;
+      }
+
+      return (
+        codePoint === 0x9 ||
+        codePoint === 0xa ||
+        codePoint === 0xd ||
+        (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+        (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+        (codePoint >= 0x10000 && codePoint <= 0x10ffff)
+      );
+    })
+    .join("");
 }
 
 export function extractParagraphSegments(
@@ -166,4 +187,3 @@ export function validateXml(xml: string, partPath: string) {
     throw new Error(`Updated XML is invalid for ${partPath}.`);
   }
 }
-
