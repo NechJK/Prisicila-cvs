@@ -43,6 +43,38 @@ interface TranslationPayload {
   metrics: TranslationMetrics;
 }
 
+type TranslateSegments = (
+  segments: ParagraphSegment[],
+) => Promise<Array<{ id: string; text: string }>>;
+
+interface TranslateDocxOptions {
+  translateSegments?: TranslateSegments;
+}
+
+function getRequiredDocxEntries(zip: JSZip) {
+  return Object.keys(zip.files).filter((path) => !zip.files[path]?.dir);
+}
+
+async function validateGeneratedDocxPackage(
+  sourceEntries: string[],
+  outputBuffer: Buffer,
+) {
+  const generatedZip = await JSZip.loadAsync(outputBuffer);
+  const generatedEntries = getRequiredDocxEntries(generatedZip);
+  const generatedEntrySet = new Set(generatedEntries);
+  const missingEntries = sourceEntries.filter((entry) => !generatedEntrySet.has(entry));
+
+  if (missingEntries.length > 0) {
+    throw new Error(
+      `Generated DOCX is missing required package entries: ${missingEntries.slice(0, 5).join(", ")}`,
+    );
+  }
+
+  if (!generatedZip.file("word/document.xml")) {
+    throw new Error("Generated DOCX is missing word/document.xml.");
+  }
+}
+
 function isDocxFile(filename: string) {
   return filename.toLowerCase().endsWith(".docx");
 }
@@ -211,6 +243,7 @@ function buildOutputFilename(filename: string) {
 export async function translateDocxFile(
   fileBuffer: Buffer,
   filename: string,
+  options: TranslateDocxOptions = {},
 ): Promise<TranslationPayload> {
   if (!isDocxFile(filename)) {
     throw new Error("The uploaded file must be a .docx document.");
@@ -225,6 +258,7 @@ export async function translateDocxFile(
   }
 
   const zip = await JSZip.loadAsync(fileBuffer);
+  const sourceEntries = getRequiredDocxEntries(zip);
   const wordPartPaths = Object.keys(zip.files).filter(shouldProcessWordPart);
 
   if (!zip.file("word/document.xml")) {
@@ -256,9 +290,10 @@ export async function translateDocxFile(
 
   const translatedMap = new Map<string, string>();
   const segmentBatches = chunkSegments(allSegments, BATCH_SIZE);
+  const translateSegments = options.translateSegments ?? translateBatch;
 
   for (const batch of segmentBatches) {
-    const translatedBatch = await translateBatch(batch);
+    const translatedBatch = await translateSegments(batch);
 
     translatedBatch.forEach((item) => {
       translatedMap.set(item.id, item.text);
@@ -298,12 +333,6 @@ export async function translateDocxFile(
     zip.file(path, nextXml);
   }
 
-  for (const [path, entry] of Object.entries(zip.files)) {
-    if (entry.dir) {
-      zip.remove(path);
-    }
-  }
-
   const outputBuffer = await zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",
@@ -314,7 +343,7 @@ export async function translateDocxFile(
     },
   });
 
-  await JSZip.loadAsync(outputBuffer);
+  await validateGeneratedDocxPackage(sourceEntries, outputBuffer);
 
   return {
     buffer: outputBuffer,
