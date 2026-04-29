@@ -160,6 +160,92 @@ function normalizeTranslatedText(text: string) {
   return text.replace(/\s+\n/g, "\n").replace(/\n\s+/g, "\n").trim();
 }
 
+function countWords(text: string) {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function hasLetters(text: string) {
+  return /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(text);
+}
+
+function isMostlyUppercase(text: string) {
+  const letters = Array.from(text).filter((character) =>
+    /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(character),
+  );
+
+  if (letters.length === 0) {
+    return false;
+  }
+
+  const uppercaseCount = letters.filter((character) => character === character.toUpperCase()).length;
+  return uppercaseCount / letters.length > 0.9;
+}
+
+function isShortHeadingLike(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const words = countWords(normalized);
+
+  if (words === 0 || words > 8) {
+    return false;
+  }
+
+  if (/[.!?]/.test(normalized)) {
+    return false;
+  }
+
+  return hasLetters(normalized);
+}
+
+function isLikelyLabel(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.endsWith(":") && countWords(normalized) <= 6;
+}
+
+function toTitleCase(text: string) {
+  return text.replace(
+    /([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’/-]*)/g,
+    (word) => {
+      if (word === word.toUpperCase() && word.length <= 4) {
+        return word;
+      }
+
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    },
+  );
+}
+
+function uppercaseFirstLetter(text: string) {
+  return text.replace(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/, (character) =>
+    character.toUpperCase(),
+  );
+}
+
+function harmonizeTranslationStyle(sourceText: string, translatedText: string) {
+  const source = sourceText.replace(/\s+/g, " ").trim();
+  const translated = translatedText.replace(/\s+/g, " ").trim();
+
+  if (!source || !translated) {
+    return translatedText;
+  }
+
+  if (isMostlyUppercase(source) && isShortHeadingLike(source)) {
+    return translated.toUpperCase();
+  }
+
+  if ((isShortHeadingLike(source) || isLikelyLabel(source)) && countWords(translated) <= 10) {
+    return toTitleCase(translated);
+  }
+
+  if (/^[A-ZÁÉÍÓÚÜÑ]/.test(source)) {
+    return uppercaseFirstLetter(translated);
+  }
+
+  return translated;
+}
+
 async function translateBatch(segments: ParagraphSegment[]) {
   const env = getEnv();
   const client = getOpenAIClient();
@@ -185,9 +271,13 @@ async function translateBatch(segments: ParagraphSegment[]) {
           {
             type: "input_text",
             text:
-              "You translate Spanish resumes into natural professional English. " +
+              "You translate Spanish resumes into natural professional English for recruiters and hiring managers. " +
               "Return valid structured JSON only. Keep every placeholder token like [[KEEP_0]] unchanged. " +
-              "Do not invent facts. Preserve concise resume tone. Use the glossary when a source phrase appears.\n\n" +
+              "Do not invent facts. Avoid literal word-for-word translation when a more natural resume phrase exists. " +
+              "Preserve concise resume tone. Preserve capitalization style for headings and labels. " +
+              "Translate job titles, HR terms, and section names into standard English resume language. " +
+              "Keep institution names, emails, dates, codes, and placeholder tokens unchanged. " +
+              "Use the glossary when a source phrase appears.\n\n" +
               `Glossary:\n${formatGlossaryForPrompt()}`,
           },
         ],
@@ -296,7 +386,12 @@ export async function translateDocxFile(
     const translatedBatch = await translateSegments(batch);
 
     translatedBatch.forEach((item) => {
-      translatedMap.set(item.id, item.text);
+      const sourceSegment = batch.find((segment) => segment.id === item.id);
+      const normalizedText = sourceSegment
+        ? harmonizeTranslationStyle(sourceSegment.text, item.text)
+        : item.text;
+
+      translatedMap.set(item.id, normalizedText);
     });
   }
 

@@ -27,12 +27,14 @@ export const CV_GLOSSARY: Record<string, string> = {
   "TERCER NIVEL": "Undergraduate Education",
   "CUARTO NIVEL": "Graduate Education",
   "Directora RRHH": "HR Director",
+  "Director RRHH": "HR Director",
   "Gerente RRHH": "HR Manager",
+  "Recursos Humanos": "Human Resources",
+  "Talento humano": "Human Talent",
 };
 
 export const PROTECTED_TERMS = [
   "UEES",
-  "RRHH",
   "IG",
   "X",
   "Senescyt",
@@ -43,4 +45,3 @@ export function formatGlossaryForPrompt() {
     .map(([source, target]) => `- ${source} => ${target}`)
     .join("\n");
 }
-

@@ -57,6 +57,42 @@ function createMinimalDocx() {
   });
 }
 
+function createHeadingDocx(text: string) {
+  const zip = new JSZip();
+
+  zip.file(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>${text}</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`,
+  );
+
+  return zip.generateAsync({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  });
+}
+
 test("translateDocxFile preserves package entries and updates document text", async () => {
   const input = await createMinimalDocx();
 
@@ -85,8 +121,8 @@ test("translateDocxFile preserves package entries and updates document text", as
 
   const documentXml = await outputZip.file("word/document.xml")?.async("string");
 
-  assert.ok(documentXml?.includes("Hello"));
-  assert.ok(documentXml?.includes("world"));
+  assert.match(documentXml ?? "", /Hello/i);
+  assert.match(documentXml ?? "", /World/i);
   assert.equal(result.metrics.translatedParts, 1);
   assert.equal(result.metrics.translatedSegments, 1);
 });
@@ -123,4 +159,38 @@ test("translateDocxFile preserves all package entries for a real CV sample when 
   assert.deepEqual(outputEntries, originalEntries);
   assert.ok(result.metrics.translatedParts > 0);
   assert.ok(result.metrics.translatedSegments > 0);
+});
+
+test("translateDocxFile restores title casing for short headings and labels", async () => {
+  const input = await createHeadingDocx("Datos personales");
+
+  const result = await translateDocxFile(input, "heading.docx", {
+    translateSegments: async (segments) =>
+      segments.map((segment) => ({
+        id: segment.id,
+        text: "personal information",
+      })),
+  });
+
+  const outputZip = await JSZip.loadAsync(result.buffer);
+  const documentXml = await outputZip.file("word/document.xml")?.async("string");
+
+  assert.ok(documentXml?.includes("Personal Information"));
+});
+
+test("translateDocxFile preserves uppercase style for uppercase headings", async () => {
+  const input = await createHeadingDocx("EXPERIENCIA PROFESIONAL");
+
+  const result = await translateDocxFile(input, "heading.docx", {
+    translateSegments: async (segments) =>
+      segments.map((segment) => ({
+        id: segment.id,
+        text: "professional experience",
+      })),
+  });
+
+  const outputZip = await JSZip.loadAsync(result.buffer);
+  const documentXml = await outputZip.file("word/document.xml")?.async("string");
+
+  assert.ok(documentXml?.includes("PROFESSIONAL EXPERIENCE"));
 });
